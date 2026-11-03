@@ -46,12 +46,13 @@ export async function sessionBefore(session?: Session): Promise<Session | undefi
   return all.filter((s) => s.id !== session?.id && (s.date < date || (s.date === date && (session?.id == null || s.id! < session.id)))).at(-1);
 }
 
-/** Starts today's session, linked to the next day of the active program. */
+/** Starts today's session. Only the day's first session moves the active program on a day. */
 export async function startSession(fields: Pick<Session, "title" | "items" | "type" | "gi">): Promise<number> {
   return db.transaction("rw", db.sessions, db.programs, db.meta, async () => {
     const program = (await db.programs.toArray()).find((p) => p.active);
+    const firstToday = (await db.sessions.where("date").equals(todayISO()).count()) === 0;
     let ref: Session["program"];
-    if (program?.id != null) {
+    if (program?.id != null && firstToday) {
       const index = nextProgramIndex(await db.sessions.toArray(), program.id);
       if (!programPosition(program, index).finished) ref = { programId: program.id, index };
     }
