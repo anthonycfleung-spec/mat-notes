@@ -31,6 +31,21 @@ export async function lastSessionBefore(date: string): Promise<Session | undefin
   return db.sessions.where("date").below(date).last();
 }
 
+/** The session a screen should work on: ?session=<id>, a fresh one with ?new, otherwise today's latest. */
+export async function sessionFromQuery(search: string): Promise<Session | undefined> {
+  const q = new URLSearchParams(search);
+  if (q.has("new")) return undefined;
+  const id = Number(q.get("session"));
+  return id ? db.sessions.get(id) : todaySession();
+}
+
+/** The session before this one, counting earlier sessions on the same day. */
+export async function sessionBefore(session?: Session): Promise<Session | undefined> {
+  const all = await db.sessions.orderBy("date").toArray();
+  const date = session?.date ?? todayISO();
+  return all.filter((s) => s.id !== session?.id && (s.date < date || (s.date === date && (session?.id == null || s.id! < session.id)))).at(-1);
+}
+
 /** Starts today's session, linked to the next day of the active program. */
 export async function startSession(fields: Pick<Session, "title" | "items" | "type" | "gi">): Promise<number> {
   return db.transaction("rw", db.sessions, db.programs, db.meta, async () => {

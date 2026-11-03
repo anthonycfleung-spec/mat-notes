@@ -12,41 +12,60 @@ const MET_LABEL = { yes: "Yes", partly: "Partly", no: "No" } as const;
 
 export default function Today() {
   const today = todayISO();
+  const [pickedId, setPickedId] = useState<number | undefined>();
   const sessions = useLiveQuery(() => db.sessions.orderBy("date").toArray(), []);
   const programs = useLiveQuery(() => db.programs.toArray(), []);
   const notes = useLiveQuery(() => db.notes.where("kind").equals("didnt").toArray(), []);
   if (!sessions || !programs || !notes) return <main className="screen" />;
 
-  const session = sessions.filter((s) => s.date === today).at(-1);
-  const last = sessions.filter((s) => s.date < today).at(-1);
+  const todays = sessions.filter((s) => s.date === today);
+  const session = todays.find((s) => s.id === pickedId) ?? todays.at(-1);
+  // A second session today looks back at the first one, not at yesterday.
+  const last = session ? sessions.filter((s) => s.id !== session.id && (s.date < today || s.id! < session.id!)).at(-1) : sessions.filter((s) => s.date < today).at(-1);
   const lastDidnt = last ? notes.filter((n) => n.sessionId === last.id) : [];
   const program = session?.program ? programs.find((p) => p.id === session.program!.programId) : programs.find((p) => p.active);
   const programIndex = session?.program?.index ?? (program?.id != null ? nextProgramIndex(sessions, program.id) : 0);
+  const q = session ? `?session=${session.id}` : "";
 
   return (
     <main className="screen">
       <div className="top">
         <span className="meta">{formatDay(today)}{session ? ` · ${session.gi ? "Gi" : "No-gi"} · ${session.type}` : ""}</span>
-        {session && <Link className="btn small" to="/intention">Edit</Link>}
+        {session && <Link className="btn small" to={`/intention${q}`}>Edit</Link>}
       </div>
 
       <WeekStrip sessions={sessions} today={today} />
+
+      {todays.length > 1 && (
+        <div className="choices" role="group" aria-label="Today's sessions">
+          {todays.map((s, i) => (
+            <button key={s.id} className="choice" aria-pressed={s.id === session?.id} onClick={() => setPickedId(s.id)}>
+              {s.reflection && Icon.check(s.id === session?.id ? "#0e0f12" : "#c8f04a")} Session {i + 1}
+            </button>
+          ))}
+        </div>
+      )}
 
       {session ? <Intention session={session} /> : <NoSession last={sessions.filter((s) => s.date < today && s.items.length > 0).at(-1)} />}
 
       {program && !(session && !session.program) && <ProgramCard program={program} index={programIndex} />}
 
       {session && (session.reflection ? (
-        <Link to="/reflect" className="card quiet card-link" style={{ flexDirection: "row", alignItems: "center" }}>
-          <span className="glyph" style={{ background: "var(--lime)", width: 36, height: 36 }}>{Icon.check("#0e0f12")}</span>
-          <div className="grow">
-            <div className="section-title">Reflected</div>
-            <div className="label">Intention met: {MET_LABEL[session.reflection.met]} · Tap to edit</div>
-          </div>
-          {Icon.chevron("#8d919b")}
-        </Link>
+        <>
+          <Link to={`/reflect${q}`} className="card quiet card-link" style={{ flexDirection: "row", alignItems: "center" }}>
+            <span className="glyph" style={{ background: "var(--lime)", width: 36, height: 36 }}>{Icon.check("#0e0f12")}</span>
+            <div className="grow">
+              <div className="section-title">Reflected</div>
+              <div className="label">Intention met: {MET_LABEL[session.reflection.met]} · Tap to edit</div>
+            </div>
+            {Icon.chevron("#8d919b")}
+          </Link>
+          {session.id === todays.at(-1)?.id && (
+            <Link to="/intention?new" className="btn big">+ Start another session today</Link>
+          )}
+        </>
       ) : (
-        <Link to="/reflect" className="btn primary big">Reflect on session</Link>
+        <Link to={`/reflect${q}`} className="btn primary big">Reflect on session</Link>
       ))}
 
       {lastDidnt.length > 0 && last && <FromLast notes={lastDidnt} last={last} session={session} />}
@@ -104,21 +123,23 @@ function DaySheet({ date, today, sessions, onClose }: { date: string | null; tod
       <h2 className="page-title" style={{ fontSize: 26 }}>{date === today ? "Today" : formatDay(date)}</h2>
       {s ? (
         <>
-          <div className="card quiet tight">
-            <span className="label">{s.gi ? "Gi" : "No-gi"} · {s.type}</span>
-            <span className="section-title">{s.title || "No intention set"}</span>
-            {s.items.length > 0 && (
-              <span className="muted" style={{ fontSize: 14 }}>
-                {s.items.filter((i) => i.hit >= i.target).length} of {s.items.length} hit{s.reflection ? ` · Intention met: ${MET_LABEL[s.reflection.met]}` : ""}
-              </span>
-            )}
-          </div>
+          {sessions.map((x, i) => (
+            <div key={x.id} className="card quiet tight">
+              <span className="label">{sessions.length > 1 ? `Session ${i + 1} · ` : ""}{x.gi ? "Gi" : "No-gi"} · {x.type}</span>
+              <span className="section-title">{x.title || "No intention set"}</span>
+              {x.items.length > 0 && (
+                <span className="muted" style={{ fontSize: 14 }}>
+                  {x.items.filter((it) => it.hit >= it.target).length} of {x.items.length} hit{x.reflection ? ` · Intention met: ${MET_LABEL[x.reflection.met]}` : ""}
+                </span>
+              )}
+            </div>
+          ))}
           {confirm ? (
             <div className="stack">
-              <p className="muted" style={{ fontSize: 14 }}>This deletes the {formatDay(date)} session{hasData ? ", its intention, reflection and notes" : ""}.</p>
+              <p className="muted" style={{ fontSize: 14 }}>This deletes {sessions.length > 1 ? `all ${sessions.length} sessions` : "the session"} on {formatDay(date)}{hasData ? ", its intention, reflection and notes" : ""}.</p>
               <div className="row">
                 <button className="btn grow" onClick={() => setConfirm(false)}>Keep it</button>
-                <button className="btn danger grow" onClick={remove}>Remove session</button>
+                <button className="btn danger grow" onClick={remove}>Remove {sessions.length > 1 ? "sessions" : "session"}</button>
               </div>
             </div>
           ) : (
@@ -264,7 +285,7 @@ function FromLast({ notes, last, session }: { notes: Note[]; last: Session; sess
         <span className="alert-icon">{Icon.bang("#261d10")}</span>
         <span className="grow stack" style={{ gap: 2 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--amber)" }}>From last session · {notes.length}</span>
-          <span style={{ fontSize: 15, fontWeight: 600 }}>{open ? `What didn't work on ${formatDay(last.date)}` : notes[0].text}</span>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>{open ? `What didn't work ${last.date === todayISO() ? "earlier today" : `on ${formatDay(last.date)}`}` : notes[0].text}</span>
         </span>
         {Icon.chevron("#ffb36b")}
       </button>

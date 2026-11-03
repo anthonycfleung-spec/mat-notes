@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db/db";
 import type { IntentionItem, Session } from "../db/types";
-import { todayISO } from "../lib/dates";
-import { lastSessionBefore, newItem, pendingItems, startSession, todaySession } from "../lib/actions";
+import { newItem, pendingItems, sessionBefore, sessionFromQuery, startSession } from "../lib/actions";
 import { AREA_COLOR, Back, Icon, toast } from "../components/ui";
 
 const TYPES = ["Class", "Open mat", "Drilling", "Private", "Comp"];
@@ -13,6 +12,7 @@ type Draft = Pick<Session, "title" | "type" | "gi" | "items">;
 
 export default function IntentionEditor() {
   const nav = useNavigate();
+  const { search } = useLocation();
   const [existing, setExisting] = useState<Session | undefined>();
   const [last, setLast] = useState<Session | undefined>();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -24,8 +24,8 @@ export default function IntentionEditor() {
 
   useEffect(() => {
     (async () => {
-      const s = await todaySession();
-      const prev = await lastSessionBefore(todayISO());
+      const s = await sessionFromQuery(search);
+      const prev = await sessionBefore(s);
       setExisting(s);
       setLast(prev);
       setDraft(
@@ -34,7 +34,7 @@ export default function IntentionEditor() {
           : { title: "", type: prev?.type ?? "Class", gi: prev?.gi ?? true, items: await pendingItems() },
       );
     })();
-  }, []);
+  }, [search]);
 
   if (!draft) return <main className="screen no-tabs" />;
 

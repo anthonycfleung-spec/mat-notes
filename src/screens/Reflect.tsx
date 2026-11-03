@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db/db";
 import type { IntentionItem, Met, NoteKind, Session, Skill } from "../db/types";
-import { saveReflection, startSession, todaySession, uid } from "../lib/actions";
+import { saveReflection, sessionFromQuery, startSession, uid } from "../lib/actions";
 import { Back, toast } from "../components/ui";
 
 interface NoteDraft {
@@ -17,6 +17,7 @@ const blank = (kind: NoteKind): NoteDraft => ({ key: uid(), kind, text: "" });
 
 export default function Reflect() {
   const nav = useNavigate();
+  const { search } = useLocation();
   const [session, setSession] = useState<Session | null | undefined>();
   const [items, setItems] = useState<IntentionItem[]>([]);
   const [met, setMet] = useState<Met | null>(null);
@@ -31,7 +32,7 @@ export default function Reflect() {
 
   useEffect(() => {
     (async () => {
-      const s = await todaySession();
+      const s = await sessionFromQuery(search);
       setSession(s ?? null);
       if (!s) return;
       setItems(s.items.map((i) => ({ ...i, tried: Math.max(i.tried, i.hit) })));
@@ -44,7 +45,7 @@ export default function Reflect() {
         setSeen(new Set((await db.problems.toArray()).filter((p) => p.seen.includes(s.date)).map((p) => p.id!)));
       }
     })();
-  }, []);
+  }, [search]);
 
   if (session === undefined || !skills || !problems) return <main className="screen no-tabs" />;
 
