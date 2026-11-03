@@ -4,7 +4,7 @@
 set -e
 remote="$(git remote get-url origin)"
 tmp="$(mktemp -d)"
-cp -R dist/. "$tmp"
+rsync -a --exclude .git dist/ "$tmp"/
 cd "$tmp"
 git init -q -b gh-pages
 git add -A
