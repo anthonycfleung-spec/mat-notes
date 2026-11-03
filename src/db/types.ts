@@ -66,6 +66,8 @@ export interface Note {
   id?: number;
   kind: NoteKind;
   skillId?: number;
+  /** the intention item this note is about, when it isn't a library skill */
+  item?: string;
   sessionId?: number;
   text: string;
   date: string;

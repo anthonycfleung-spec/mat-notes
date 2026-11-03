@@ -84,7 +84,7 @@ function WeekStrip({ sessions, today }: { sessions: Session[]; today: string }) 
     <section className="stack" style={{ gap: 6 }}>
       <div className="week-head">
         <button className="icon-btn plain" aria-label="Previous week" onClick={() => setWeeksBack(weeksBack + 1)}>{Icon.chevron("#8d919b", 180)}</button>
-        <span className="label">{title} · {days.filter((d) => trained.has(d)).length} trained</span>
+        <span className="label">{title} · {sessions.filter((s) => s.date >= start && s.date <= days[6]).length} trained</span>
         <button className="icon-btn plain" aria-label="Next week" disabled={weeksBack === 0} onClick={() => setWeeksBack(weeksBack - 1)}>{Icon.chevron("#8d919b")}</button>
       </div>
       <div className="week">

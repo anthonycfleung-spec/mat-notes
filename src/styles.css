@@ -119,7 +119,7 @@ p { margin: 0; }
 .choice.amber[aria-pressed="true"] { background: var(--amber); border-color: var(--amber); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
-  min-height: 44px; padding: 0 14px; border-radius: 12px;
+  min-height: 44px; padding: 8px 14px; border-radius: 12px; line-height: 1.25;
   border: 1px solid var(--line); background: var(--surface);
   font-size: 14px; font-weight: 600;
   display: inline-flex; align-items: center; gap: 8px; text-align: left;

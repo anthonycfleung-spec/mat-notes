@@ -146,8 +146,10 @@ function Bar({ value, color, text }: { value: number; color: string; text: strin
 function NotesBySkill({ notes, skills }: { notes: Note[]; skills: Skill[] }) {
   const [kind, setKind] = useState<"didnt" | "worked">("didnt");
   const list = notes.filter((n) => n.kind === kind);
-  const groups = new Map<number | undefined, Note[]>();
-  for (const n of list) groups.set(n.skillId, [...(groups.get(n.skillId) ?? []), n]);
+  // Group by skill when there is one, otherwise by the intention item the note was about.
+  const keyOf = (n: Note) => (n.skillId != null ? `s${n.skillId}` : n.item ? `i${n.item.toLowerCase()}` : "general");
+  const groups = new Map<string, Note[]>();
+  for (const n of list) groups.set(keyOf(n), [...(groups.get(keyOf(n)) ?? []), n]);
   const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   const color = kind === "worked" ? "var(--lime)" : "var(--amber)";
   return (
@@ -158,12 +160,14 @@ function NotesBySkill({ notes, skills }: { notes: Note[]; skills: Skill[] }) {
         <button className="choice lime" aria-pressed={kind === "worked"} onClick={() => setKind("worked")}>Worked</button>
       </div>
       {sorted.length === 0 && <p className="empty">Nothing noted in the last 4 weeks.</p>}
-      {sorted.map(([skillId, ns]) => {
+      {sorted.map(([key, ns]) => {
+        const skillId = ns[0].skillId;
         const skill = skills.find((s) => s.id === skillId);
+        const item = ns[0].item;
         return (
-          <div key={skillId ?? "none"} className="stack" style={{ gap: 6 }}>
+          <div key={key} className="stack" style={{ gap: 6 }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
-              {skill ? <Link to={`/skills/${skill.id}`} style={{ fontWeight: 700, color: "var(--text)", textDecoration: "none" }}>{skill.name}</Link> : <span style={{ fontWeight: 700 }}>General</span>}
+              {skill ? <Link to={`/skills/${skill.id}`} style={{ fontWeight: 700, color: "var(--text)", textDecoration: "none" }}>{skill.name}</Link> : <span style={{ fontWeight: 700 }}>{item ?? "General"}</span>}
               <span className="label">{ns.length}×</span>
             </div>
             {ns.slice(0, 3).map((n) => (
@@ -175,7 +179,7 @@ function NotesBySkill({ notes, skills }: { notes: Note[]; skills: Skill[] }) {
             ))}
             {kind === "didnt" && (
               <button className="btn small ghost" style={{ alignSelf: "flex-start" }} onClick={async () => {
-                const w = await addToNextIntention(skill ? `Fix: ${ns[0].text}` : ns[0].text, skillId);
+                const w = await addToNextIntention(skill || item ? `Fix: ${ns[0].text}` : ns[0].text, skillId);
                 toast(w === "today" ? "Added to today" : "Added to your next intention");
               }}>+ Add to next intention</button>
             )}

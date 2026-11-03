@@ -11,6 +11,7 @@ interface NoteDraft {
   kind: NoteKind;
   text: string;
   skillId?: number;
+  item?: string;
 }
 
 const blank = (kind: NoteKind): NoteDraft => ({ key: uid(), kind, text: "" });
@@ -41,7 +42,7 @@ export default function Reflect() {
         setEnergy(s.reflection.energy);
         setFocus(s.reflection.focus);
         const saved = await db.notes.where("sessionId").equals(s.id!).toArray();
-        if (saved.length) setNotes(saved.map((n) => ({ key: uid(), kind: n.kind, text: n.text, skillId: n.skillId })));
+        if (saved.length) setNotes(saved.map((n) => ({ key: uid(), kind: n.kind, text: n.text, skillId: n.skillId, item: n.item })));
         setSeen(new Set((await db.problems.toArray()).filter((p) => p.seen.includes(s.date)).map((p) => p.id!)));
       }
     })();
@@ -49,9 +50,9 @@ export default function Reflect() {
 
   if (session === undefined || !skills || !problems) return <main className="screen no-tabs" />;
 
-  // Skills from today's intention come first when tagging notes.
+  // Notes are tagged to today's intention items first; other in-progress skills sit behind "Other skill".
   const todaySkillIds = new Set(items.map((i) => i.skillId).filter((x): x is number => x != null));
-  const tagSkills = [...skills.filter((s) => todaySkillIds.has(s.id!)), ...skills.filter((s) => s.status === "ip" && !todaySkillIds.has(s.id!))];
+  const tagSkills = skills.filter((s) => s.status === "ip" && !todaySkillIds.has(s.id!));
 
   const setItem = (id: string, patch: Partial<IntentionItem>) =>
     setItems(items.map((i) => {
@@ -76,7 +77,7 @@ export default function Reflect() {
     await saveReflection(s, {
       items,
       reflection: { met, energy, focus },
-      notes: notes.map(({ kind, text, skillId }) => ({ kind, text, skillId })),
+      notes: notes.map(({ kind, text, skillId, item }) => ({ kind, text, skillId, item })),
       problemsSeen: [...seen],
       newProblem: newProblem.trim() ? { text: newProblem, skillId: newProblemSkill } : undefined,
     });
@@ -90,7 +91,7 @@ export default function Reflect() {
       {notes.filter((n) => n.kind === kind).map((n) => (
         <div key={n.key} className="card tight">
           <textarea className="textarea" style={{ minHeight: 72 }} value={n.text} placeholder={kind === "worked" ? "e.g. Matrix entry landed when I pinned the far knee" : "e.g. Got stacked out of the shotgun armbar"} aria-label={title} onChange={(e) => setNote(n.key, { text: e.target.value })} />
-          <SkillTags skills={tagSkills} value={n.skillId} onChange={(skillId) => setNote(n.key, { skillId })} />
+          <NoteTags items={items} skills={tagSkills} value={n} onChange={(tag) => setNote(n.key, tag)} />
         </div>
       ))}
       <button className="btn ghost small" onClick={() => setNotes([...notes, blank(kind)])}>+ Another</button>
@@ -142,7 +143,7 @@ export default function Reflect() {
           ))}
         </div>
         <input className="input" style={{ marginTop: 6 }} value={newProblem} placeholder="New problem (optional)" aria-label="New problem" onChange={(e) => setNewProblem(e.target.value)} />
-        {newProblem.trim() && <SkillTags skills={tagSkills} value={newProblemSkill} onChange={setNewProblemSkill} />}
+        {newProblem.trim() && <SkillTags skills={[...skills.filter((s) => todaySkillIds.has(s.id!)), ...tagSkills]} value={newProblemSkill} onChange={setNewProblemSkill} />}
       </div>
 
       <button className="btn primary big" disabled={!met} onClick={save}>{met ? "Save reflection" : "Choose if you met your intention"}</button>
@@ -183,6 +184,33 @@ function Scale({ label, value, onChange, low, high }: { label: string; value: nu
         ))}
       </div>
       <div className="row" style={{ justifyContent: "space-between" }}><span className="label">{low}</span><span className="label">{high}</span></div>
+    </div>
+  );
+}
+
+type Tag = Pick<NoteDraft, "skillId" | "item">;
+
+function NoteTags({ items, skills, value, onChange }: { items: IntentionItem[]; skills: Skill[]; value: Tag; onChange: (tag: Tag) => void }) {
+  const otherSkill = value.item == null && value.skillId != null ? skills.find((s) => s.id === value.skillId) : undefined;
+  const [more, setMore] = useState(!!otherSkill);
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="chips" aria-label="What is this about?">
+        {items.map((it) => (
+          <button key={it.id} className="chip" aria-pressed={value.item === it.label} onClick={() => onChange({ item: it.label, skillId: it.skillId })}>{it.label}</button>
+        ))}
+        <button className="chip" aria-pressed={value.item == null && value.skillId == null} onClick={() => onChange({ item: undefined, skillId: undefined })}>General</button>
+        {skills.length > 0 && (
+          <button className="chip" aria-expanded={more} aria-pressed={!!otherSkill} onClick={() => setMore(!more)}>{otherSkill ? otherSkill.name : "Other skill"} {more ? "▴" : "▾"}</button>
+        )}
+      </div>
+      {more && (
+        <div className="chips">
+          {skills.map((s) => (
+            <button key={s.id} className="chip" aria-pressed={value.item == null && value.skillId === s.id} onClick={() => { onChange({ item: undefined, skillId: s.id }); setMore(false); }}>{s.name}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
