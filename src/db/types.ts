@@ -21,6 +21,8 @@ export interface Skill {
   createdAt: string;
   /** set when status changes; used for "moved to Done" stats */
   statusChangedAt?: string;
+  /** chosen as the area's main focus on the Skills tab */
+  pinned?: boolean;
 }
 
 export interface IntentionItem {

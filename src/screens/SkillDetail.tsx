@@ -5,7 +5,7 @@ import { db } from "../db/db";
 import type { NoteKind, Skill } from "../db/types";
 import { AREAS, STATUS_LABEL, STATUS_ORDER } from "../db/types";
 import { formatShort, todayISO } from "../lib/dates";
-import { addToNextIntention, setSkillStatus } from "../lib/actions";
+import { addToNextIntention, setMainFocus, setSkillStatus } from "../lib/actions";
 import { rate, tally, weeklyRates } from "../lib/stats";
 import { AREA_COLOR, Back, Glyph, Icon, Ring, Sheet, Sparkline, toast } from "../components/ui";
 
@@ -70,6 +70,11 @@ export default function SkillDetail() {
           <p className="empty">No tries logged yet. Add it to an intention to start tracking hits.</p>
         )}
       </div>
+      {(skill.status === "ip" || skill.status === "ns") && (
+        <button className="btn" aria-pressed={!!skill.pinned} style={skill.pinned ? { color: "var(--lime)", borderColor: "#3a4a14" } : undefined} onClick={() => { setMainFocus(skill, !skill.pinned); toast(skill.pinned ? "Main focus picked automatically" : `Main focus · ${skill.name}`); }}>
+          {skill.pinned ? <>{Icon.check("var(--lime)")} Main focus for {skill.area}</> : `Make main focus for ${skill.area}`}
+        </button>
+      )}
       <button className="btn" onClick={async () => { const w = await addToNextIntention(skill.name, id); toast(w === "today" ? "Added to today" : "Added to your next intention"); }}>
         + Work on this next session
       </button>

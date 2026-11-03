@@ -5,8 +5,9 @@ import { db } from "../db/db";
 import type { Area, Session, Skill, Status } from "../db/types";
 import { AREAS, STATUS_LABEL } from "../db/types";
 import { addDays, todayISO } from "../lib/dates";
+import { setMainFocus } from "../lib/actions";
 import { rate, tally, weeklyRates } from "../lib/stats";
-import { AREA_COLOR, Glyph, Ring, Sheet, Sparkline, StatusTrack } from "../components/ui";
+import { AREA_COLOR, Glyph, Ring, Sheet, Sparkline, StatusTrack, toast } from "../components/ui";
 
 const GROUPS: Status[] = ["ip", "ns", "pk", "dn"];
 const AREA_KEY = "skills.area";
@@ -20,6 +21,7 @@ export default function Skills() {
     try { localStorage.setItem(AREA_KEY, a); } catch { /* private mode */ }
   };
   const [adding, setAdding] = useState(false);
+  const [picking, setPicking] = useState(false);
   const skills = useLiveQuery(() => db.skills.toArray(), []);
   const sessions = useLiveQuery(() => db.sessions.toArray(), []);
   const problems = useLiveQuery(() => db.problems.where("status").equals("open").toArray(), []);
@@ -45,7 +47,11 @@ export default function Skills() {
         ))}
       </div>
 
-      {focus && <FocusCard skill={focus} sessions={sessions} />}
+      {focus ? (
+        <FocusCard skill={focus} sessions={sessions} onChange={() => setPicking(true)} />
+      ) : own.length > 0 && (
+        <button className="btn" onClick={() => setPicking(true)}>Choose a main focus</button>
+      )}
 
       {GROUPS.map((status) => {
         const list = own.filter((s) => s.status === status && s.id !== focus?.id);
@@ -81,12 +87,15 @@ export default function Skills() {
       {own.length === 0 && <p className="empty">No {area.toLowerCase()} skills yet. Tap + to add one.</p>}
 
       <AddSkill open={adding} area={area} onClose={() => setAdding(false)} />
+      <PickFocus open={picking} area={area} skills={own} current={focus} onClose={() => setPicking(false)} />
     </main>
   );
 }
 
-/** The in-progress skill you've tried most in the last 4 weeks; falls back to the first in progress. */
+/** The skill you picked; otherwise the in-progress skill you've tried most in the last 4 weeks. */
 function mainFocus(skills: Skill[], sessions: Session[]): Skill | undefined {
+  const pinned = skills.find((s) => s.pinned && (s.status === "ip" || s.status === "ns"));
+  if (pinned) return pinned;
   const ip = skills.filter((s) => s.status === "ip");
   const since = addDays(todayISO(), -27);
   const recent = sessions.filter((s) => s.date >= since);
@@ -99,16 +108,20 @@ function mainFocus(skills: Skill[], sessions: Session[]): Skill | undefined {
   return best ?? ip[0];
 }
 
-function FocusCard({ skill, sessions }: { skill: Skill; sessions: Session[] }) {
+function FocusCard({ skill, sessions, onChange }: { skill: Skill; sessions: Session[]; onChange: () => void }) {
   const t = tally(sessions, skill.id);
   const r = rate(t);
   const trend = weeklyRates(sessions, todayISO(), 6, skill.id).map((w) => w.rate);
   return (
-    <Link to={`/skills/${skill.id}`} className="focus-card">
+    <div className="focus-card">
+      <div className="row" style={{ justifyContent: "space-between", margin: "-6px -6px -8px 0" }}>
+        <span style={{ fontSize: 12, color: "var(--lime)", fontWeight: 600 }}>Main focus{skill.pinned ? "" : " · picked automatically"}</span>
+        <button className="btn small ghost" style={{ minHeight: 36 }} onClick={onChange}>Change</button>
+      </div>
+      <Link to={`/skills/${skill.id}`} className="focus-link">
       <div className="row">
         <Glyph area={skill.area} size={48} />
         <div className="grow stack" style={{ gap: 2 }}>
-          <span style={{ fontSize: 12, color: "var(--lime)", fontWeight: 600 }}>Main focus</span>
           <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.2 }}>{skill.name}</span>
         </div>
         {r != null && (
@@ -122,7 +135,38 @@ function FocusCard({ skill, sessions }: { skill: Skill; sessions: Session[] }) {
         <StatusTrack status={skill.status} width="100%" />
         <span className="label" style={{ whiteSpace: "nowrap" }}>{STATUS_LABEL[skill.status]}</span>
       </div>
-    </Link>
+      </Link>
+    </div>
+  );
+}
+
+function PickFocus({ open, area, skills, current, onClose }: { open: boolean; area: Area; skills: Skill[]; current?: Skill; onClose: () => void }) {
+  const choices = skills
+    .filter((s) => s.status === "ip" || s.status === "ns")
+    .sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === "ip" ? -1 : 1));
+  const pick = async (s: Skill) => {
+    await setMainFocus(s, true);
+    toast(`Main focus · ${s.name}`);
+    onClose();
+  };
+  return (
+    <Sheet open={open} onClose={onClose} label="Choose main focus">
+      <h2 className="page-title" style={{ fontSize: 26 }}>Main focus · {area}</h2>
+      <div className="stack" style={{ gap: 8, maxHeight: "55vh", overflowY: "auto" }}>
+        {choices.map((s) => (
+          <button key={s.id} className="choice pick-row" aria-pressed={current?.id === s.id && !!s.pinned} onClick={() => pick(s)}>
+            <span className="grow" style={{ textAlign: "left" }}>{s.name}</span>
+            <span className="label">{STATUS_LABEL[s.status]}</span>
+          </button>
+        ))}
+        {choices.length === 0 && <p className="empty">No {area.toLowerCase()} skills are in progress or not started.</p>}
+      </div>
+      {current?.pinned && (
+        <button className="btn" onClick={async () => { await setMainFocus(current, false); toast("Main focus picked automatically"); onClose(); }}>
+          Pick automatically
+        </button>
+      )}
+    </Sheet>
   );
 }
 

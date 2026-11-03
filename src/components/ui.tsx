@@ -14,8 +14,8 @@ export const Icon = {
   check: (c = "currentColor", s = 15) => (
     <svg width={s} height={s} viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke={c} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
   ),
-  chevron: (c = "currentColor") => (
-    <svg className="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  chevron: (c = "currentColor", rotate = 0) => (
+    <svg className="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style={rotate ? { transform: `rotate(${rotate}deg)` } : undefined}><path d="M6 3l5 5-5 5" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
   ),
   back: () => (
     <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -132,19 +132,26 @@ export function Sheet({ open, onClose, children, label }: { open: boolean; onClo
 }
 
 /* Tiny global toast */
-let pushToast: (msg: string) => void = () => {};
-export const toast = (msg: string) => pushToast(msg);
+type ToastMsg = { text: string; undo?: () => void };
+let pushToast: (msg: ToastMsg | null) => void = () => {};
+export const toast = (text: string, undo?: () => void) => pushToast({ text, undo });
 export function Toaster() {
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<ToastMsg | null>(null);
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
     pushToast = (m) => {
       setMsg(m);
       clearTimeout(t);
-      t = setTimeout(() => setMsg(null), 1800);
+      if (m) t = setTimeout(() => setMsg(null), m.undo ? 4000 : 1800);
     };
   }, []);
-  return msg ? <div className="toast" role="status">{msg}</div> : null;
+  if (!msg) return null;
+  return (
+    <div className={`toast ${msg.undo ? "with-action" : ""}`} role="status">
+      {msg.text}
+      {msg.undo && <button onClick={() => { msg.undo!(); pushToast(null); }}>Undo</button>}
+    </div>
+  );
 }
 
 /** Small haptic tap where supported (Android); iPhone ignores it. */

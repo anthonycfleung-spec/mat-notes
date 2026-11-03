@@ -56,13 +56,49 @@ export async function addToNextIntention(label: string, skillId?: number) {
   return "next";
 }
 
+/** Adds (or with a negative delta, removes) hits. Removed hits come off the tries too. */
 export async function bumpHit(session: Session, itemId: string, delta: number) {
   const items = session.items.map((it) => {
     if (it.id !== itemId) return it;
     const hit = Math.max(0, it.hit + delta);
-    return { ...it, hit, tried: Math.max(it.tried, hit) };
+    const tried = delta < 0 ? Math.max(hit, it.tried - (it.hit - hit)) : Math.max(it.tried, hit);
+    return { ...it, hit, tried };
   });
   await db.sessions.update(session.id!, { items });
+}
+
+/** Puts one item back exactly as it was, for Undo. */
+export async function restoreItem(sessionId: number, item: IntentionItem) {
+  const session = await db.sessions.get(sessionId);
+  if (!session) return;
+  await db.sessions.update(sessionId, { items: session.items.map((it) => (it.id === item.id ? item : it)) });
+}
+
+/** Logs a day you trained but didn't record. */
+export async function logPastDay(date: string) {
+  const last = await lastSessionBefore(date);
+  await db.sessions.add({ date, type: last?.type ?? "Class", gi: last?.gi ?? true, title: "", items: [] });
+}
+
+/** Removes every session on a day, with its notes and problem sightings. */
+export async function removeDay(date: string) {
+  await db.transaction("rw", db.sessions, db.notes, db.problems, async () => {
+    const ids = (await db.sessions.where("date").equals(date).primaryKeys()) as number[];
+    await db.notes.where("sessionId").anyOf(ids).delete();
+    await db.problems.toCollection().modify((p) => { p.seen = p.seen.filter((d) => d !== date); });
+    await db.sessions.bulkDelete(ids);
+  });
+}
+
+/** Pins a skill as its area's main focus (one per area); pass pin=false to go back to automatic. */
+export async function setMainFocus(skill: Skill, pin: boolean) {
+  await db.transaction("rw", db.skills, async () => {
+    await db.skills.where("area").equals(skill.area).modify((s) => { delete s.pinned; });
+    if (pin) {
+      await db.skills.update(skill.id!, { pinned: true });
+      if (skill.status === "ns") await setSkillStatus(skill, "ip");
+    }
+  });
 }
 
 export interface ReflectInput {

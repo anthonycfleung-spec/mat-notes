@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db/db";
-import type { Note, Program, Session } from "../db/types";
-import { addDays, formatDay, todayISO, weekStart } from "../lib/dates";
-import { addToNextIntention, bumpHit, newItem, pendingItems, startSession } from "../lib/actions";
+import type { IntentionItem, Note, Program, Session } from "../db/types";
+import { addDays, formatDay, formatShort, todayISO, weekStart } from "../lib/dates";
+import { addToNextIntention, bumpHit, logPastDay, newItem, pendingItems, removeDay, restoreItem, startSession } from "../lib/actions";
 import { nextProgramIndex, programPosition } from "../lib/stats";
-import { Icon, Pips, Ring, buzz, toast } from "../components/ui";
+import { Icon, Pips, Ring, Sheet, buzz, toast } from "../components/ui";
 
 const MET_LABEL = { yes: "Yes", partly: "Partly", no: "No" } as const;
 
@@ -32,7 +32,7 @@ export default function Today() {
 
       <WeekStrip sessions={sessions} today={today} />
 
-      {session ? <Intention session={session} /> : <NoSession last={last} />}
+      {session ? <Intention session={session} /> : <NoSession last={sessions.filter((s) => s.date < today && s.items.length > 0).at(-1)} />}
 
       {program && !(session && !session.program) && <ProgramCard program={program} index={programIndex} />}
 
@@ -55,29 +55,95 @@ export default function Today() {
 }
 
 function WeekStrip({ sessions, today }: { sessions: Session[]; today: string }) {
-  const start = weekStart(today);
+  const [weeksBack, setWeeksBack] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const start = addDays(weekStart(today), -7 * weeksBack);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const trained = new Set(sessions.map((s) => s.date));
-  const names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-  const label = `This week: trained ${days.filter((d) => trained.has(d)).map((d) => names[days.indexOf(d)]).join(", ") || "no days yet"}`;
+  const title = weeksBack === 0 ? "This week" : weeksBack === 1 ? "Last week" : `Week of ${formatShort(start)}`;
   return (
-    <div className="week" role="img" aria-label={label}>
-      {days.map((d, i) => (
-        <div key={d} className={`d ${d === today ? "today" : ""}`}>
-          <span>{"MTWTFSS"[i]}</span>
-          <span className={`tile ${trained.has(d) ? "on" : ""}`} />
-        </div>
-      ))}
-    </div>
+    <section className="stack" style={{ gap: 6 }}>
+      <div className="week-head">
+        <button className="icon-btn plain" aria-label="Previous week" onClick={() => setWeeksBack(weeksBack + 1)}>{Icon.chevron("#8d919b", 180)}</button>
+        <span className="label">{title} · {days.filter((d) => trained.has(d)).length} trained</span>
+        <button className="icon-btn plain" aria-label="Next week" disabled={weeksBack === 0} onClick={() => setWeeksBack(weeksBack - 1)}>{Icon.chevron("#8d919b")}</button>
+      </div>
+      <div className="week">
+        {days.map((d, i) => (
+          <button
+            key={d}
+            className={`d ${d === today ? "today" : ""}`}
+            disabled={d > today}
+            aria-label={`${formatDay(d)}, ${trained.has(d) ? "trained" : "not trained"}`}
+            onClick={() => setPicked(d)}
+          >
+            <span>{"MTWTFSS"[i]}</span>
+            <span className={`tile ${trained.has(d) ? "on" : ""}`} />
+          </button>
+        ))}
+      </div>
+      <DaySheet date={picked} today={today} sessions={sessions.filter((s) => s.date === picked)} onClose={() => setPicked(null)} />
+    </section>
+  );
+}
+
+function DaySheet({ date, today, sessions, onClose }: { date: string | null; today: string; sessions: Session[]; onClose: () => void }) {
+  const nav = useNavigate();
+  const [confirm, setConfirm] = useState(false);
+  const close = () => { setConfirm(false); onClose(); };
+  if (!date) return null;
+  const s = sessions.at(-1);
+  const hasData = sessions.some((x) => x.items.length > 0 || x.reflection);
+  const remove = async () => {
+    await removeDay(date);
+    toast(`${formatDay(date)} marked as not trained`);
+    close();
+  };
+  return (
+    <Sheet open onClose={close} label={formatDay(date)}>
+      <h2 className="page-title" style={{ fontSize: 26 }}>{date === today ? "Today" : formatDay(date)}</h2>
+      {s ? (
+        <>
+          <div className="card quiet tight">
+            <span className="label">{s.gi ? "Gi" : "No-gi"} · {s.type}</span>
+            <span className="section-title">{s.title || "No intention set"}</span>
+            {s.items.length > 0 && (
+              <span className="muted" style={{ fontSize: 14 }}>
+                {s.items.filter((i) => i.hit >= i.target).length} of {s.items.length} hit{s.reflection ? ` · Intention met: ${MET_LABEL[s.reflection.met]}` : ""}
+              </span>
+            )}
+          </div>
+          {confirm ? (
+            <div className="stack">
+              <p className="muted" style={{ fontSize: 14 }}>This deletes the {formatDay(date)} session{hasData ? ", its intention, reflection and notes" : ""}.</p>
+              <div className="row">
+                <button className="btn grow" onClick={() => setConfirm(false)}>Keep it</button>
+                <button className="btn danger grow" onClick={remove}>Remove session</button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn danger" onClick={() => (hasData ? setConfirm(true) : remove())}>I didn't train this day</button>
+          )}
+        </>
+      ) : date === today ? (
+        <button className="btn primary big" onClick={() => { close(); nav("/intention"); }}>Set today's intention</button>
+      ) : (
+        <>
+          <p className="muted">No session logged.</p>
+          <button className="btn primary big" onClick={async () => { await logPastDay(date); toast(`${formatDay(date)} logged`); close(); }}>I trained this day</button>
+        </>
+      )}
+    </Sheet>
   );
 }
 
 function Intention({ session }: { session: Session }) {
   const done = session.items.filter((i) => i.hit >= i.target).length;
   const total = session.items.length;
-  const tap = async (id: string, delta: number) => {
+  const tap = async (it: IntentionItem, delta: number) => {
     buzz();
-    await bumpHit(session, id, delta);
+    await bumpHit(session, it.id, delta);
+    toast(delta < 0 ? `${it.hit >= it.target ? "Unchecked" : "Removed a hit ·"} ${it.label}` : `Hit ${Math.min(it.hit + 1, 99)}/${it.target} · ${it.label}`, () => restoreItem(session.id!, it));
   };
   return (
     <>
@@ -101,17 +167,23 @@ function Intention({ session }: { session: Session }) {
               <button
                 className="box"
                 style={{ background: isDone ? "var(--lime)" : "transparent" }}
-                aria-label={isDone ? `Undo last hit on ${it.label}` : `Add a hit on ${it.label}`}
-                onClick={() => tap(it.id, isDone ? -1 : 1)}
+                aria-label={isDone ? `Uncheck ${it.label}` : `Add a hit on ${it.label}`}
+                onClick={() => tap(it, isDone ? -it.hit : 1)}
               >
                 {isDone && Icon.check("#0e0f12")}
               </button>
               <span className="text">{it.label}</span>
-              <Pips hit={it.hit} target={it.target} />
-              {isDone ? (
-                <button className="icon-btn plain" aria-label={`Add another hit on ${it.label}`} onClick={() => tap(it.id, 1)}>+</button>
+              {it.hit > 0 && !isDone ? (
+                <button className="pips-btn" aria-label={`Remove a hit on ${it.label}`} onClick={() => tap(it, -1)}>
+                  <Pips hit={it.hit} target={it.target} />
+                </button>
               ) : (
-                <button className="icon-btn" aria-label={`Add a hit on ${it.label}`} onClick={() => tap(it.id, 1)}>+</button>
+                <Pips hit={it.hit} target={it.target} />
+              )}
+              {isDone ? (
+                <button className="icon-btn plain" aria-label={`Add another hit on ${it.label}`} onClick={() => tap(it, 1)}>+</button>
+              ) : (
+                <button className="icon-btn" aria-label={`Add a hit on ${it.label}`} onClick={() => tap(it, 1)}>+</button>
               )}
             </div>
           );
