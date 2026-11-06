@@ -124,15 +124,7 @@ function DaySheet({ date, today, sessions, onClose }: { date: string | null; tod
       {s ? (
         <>
           {sessions.map((x, i) => (
-            <div key={x.id} className="card quiet tight">
-              <span className="label">{sessions.length > 1 ? `Session ${i + 1} · ` : ""}{x.gi ? "Gi" : "No-gi"} · {x.type}</span>
-              <span className="section-title">{x.title || "No intention set"}</span>
-              {x.items.length > 0 && (
-                <span className="muted" style={{ fontSize: 14 }}>
-                  {x.items.filter((it) => it.hit >= it.target).length} of {x.items.length} hit{x.reflection ? ` · Intention met: ${MET_LABEL[x.reflection.met]}` : ""}
-                </span>
-              )}
-            </div>
+            <SessionSummary key={x.id} session={x} heading={sessions.length > 1 ? `Session ${i + 1}` : undefined} onOpen={(to) => { close(); nav(to); }} />
           ))}
           {confirm ? (
             <div className="stack">
@@ -155,6 +147,58 @@ function DaySheet({ date, today, sessions, onClose }: { date: string | null; tod
         </>
       )}
     </Sheet>
+  );
+}
+
+/** A past session at a glance: its intention, hits and reflection, with links to edit each. */
+function SessionSummary({ session, heading, onOpen }: { session: Session; heading?: string; onOpen: (to: string) => void }) {
+  const notes = useLiveQuery(() => db.notes.where("sessionId").equals(session.id!).toArray(), [session.id]);
+  const r = session.reflection;
+  const noteList = (kind: "worked" | "didnt", title: string, color: string) => {
+    const list = (notes ?? []).filter((n) => n.kind === kind);
+    if (!list.length) return null;
+    return (
+      <div className="stack" style={{ gap: 6 }}>
+        <span className="label" style={{ color }}>{title}</span>
+        {list.map((n) => (
+          <div key={n.id} className="note-row">
+            <span className="kind-mark" style={{ background: color }} />
+            <p>{n.text}{n.item && <span className="label"> · {n.item}</span>}</p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  return (
+    <div className="card quiet tight" style={{ gap: 12 }}>
+      <div className="stack" style={{ gap: 2 }}>
+        <span className="label">{heading ? `${heading} · ` : ""}{session.gi ? "Gi" : "No-gi"} · {session.type}</span>
+        <span className="section-title">{session.title || "No intention set"}</span>
+      </div>
+      {session.items.length > 0 && (
+        <div className="stack" style={{ gap: 6 }}>
+          {session.items.map((it) => (
+            <div key={it.id} className="row" style={{ gap: 10 }}>
+              <span className="grow" style={{ fontSize: 14, color: it.hit >= it.target ? "var(--faint)" : undefined, textDecoration: it.hit >= it.target ? "line-through" : undefined }}>{it.label}</span>
+              <span className="label" style={{ color: it.hit >= it.target ? "var(--lime)" : undefined }}>{it.hit}/{it.target}{it.tried > it.hit ? ` · ${it.tried} tries` : ""}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {r ? (
+        <>
+          <span className="muted" style={{ fontSize: 14 }}>Intention met: {MET_LABEL[r.met]} · Energy {r.energy}/5 · Focus {r.focus}/5</span>
+          {noteList("worked", "What worked", "var(--lime)")}
+          {noteList("didnt", "What didn't work", "var(--amber)")}
+        </>
+      ) : (
+        <span className="muted" style={{ fontSize: 14 }}>Not reflected yet.</span>
+      )}
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn small grow" onClick={() => onOpen(`/intention?session=${session.id}`)}>{session.items.length ? "Edit intention" : "Add intention"}</button>
+        <button className={`btn small grow ${r ? "" : "primary"}`} onClick={() => onOpen(`/reflect?session=${session.id}`)}>{r ? "Edit reflection" : "Reflect"}</button>
+      </div>
+    </div>
   );
 }
 

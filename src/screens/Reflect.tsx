@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db/db";
 import type { IntentionItem, Met, NoteKind, Session, Skill } from "../db/types";
 import { saveReflection, sessionFromQuery, startSession, uid } from "../lib/actions";
+import { formatDay, todayISO } from "../lib/dates";
 import { Back, toast } from "../components/ui";
 
 interface NoteDraft {
@@ -104,7 +105,9 @@ export default function Reflect() {
         <Back to="/" label="Today" />
       </div>
       <h1 className="page-title">Reflect</h1>
-      {session?.title && <p className="muted" style={{ marginTop: -8 }}>{session.title}</p>}
+      {session && (session.title || session.date !== todayISO()) && (
+        <p className="muted" style={{ marginTop: -8 }}>{[session.date !== todayISO() && formatDay(session.date), session.title].filter(Boolean).join(" · ")}</p>
+      )}
 
       {items.length > 0 && (
         <div className="field">

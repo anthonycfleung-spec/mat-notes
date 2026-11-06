@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db/db";
 import type { IntentionItem, Session } from "../db/types";
 import { newItem, pendingItems, sessionBefore, sessionFromQuery, startSession } from "../lib/actions";
+import { formatDay, todayISO } from "../lib/dates";
 import { AREA_COLOR, Back, Icon, toast } from "../components/ui";
 
 const TYPES = ["Class", "Open mat", "Drilling", "Private", "Comp"];
@@ -64,6 +65,7 @@ export default function IntentionEditor() {
         <button className="btn primary small" onClick={save}>Save</button>
       </div>
       <h1 className="page-title">{existing ? "Edit intention" : "Set intention"}</h1>
+      {existing && existing.date !== todayISO() && <p className="muted" style={{ marginTop: -8 }}>{formatDay(existing.date)}</p>}
 
       <label className="field">
         <span>Focus</span>
