@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/mat-notes/sw.js', { scope: '/mat-notes/' })})}
